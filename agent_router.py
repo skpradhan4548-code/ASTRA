@@ -18,7 +18,13 @@ from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from agent.core import run_agent_claude, run_agent_openai, stream_agent_claude
+from agent.core import (
+    run_agent_claude,
+    run_agent_demo,
+    run_agent_openai,
+    stream_agent_claude,
+    stream_agent_demo,
+)
 from agent.tools import WORKSPACE
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -30,7 +36,7 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 
 class AgentRequest(BaseModel):
     goal: str
-    provider: str = "claude"   # "claude" | "openai"
+    provider: str = "claude"   # "claude" | "openai" | "demo"
     model: str | None = None   # override the default model if desired
 
 
@@ -44,7 +50,9 @@ def run_agent(req: AgentRequest):
     if req.model:
         kwargs["model"] = req.model
 
-    if req.provider == "openai":
+    if req.provider == "demo":
+        return run_agent_demo(req.goal)
+    elif req.provider == "openai":
         return run_agent_openai(req.goal, **kwargs)
 
     return run_agent_claude(req.goal, **kwargs)
@@ -57,7 +65,7 @@ def run_agent(req: AgentRequest):
 @router.get("/stream")
 def stream_agent(
     goal: str = Query(..., description="The goal for the agent to accomplish"),
-    provider: str = Query("claude", description="Model provider: claude or openai"),
+    provider: str = Query("claude", description="Model provider: claude, openai, or demo"),
 ):
     """
     Stream agent execution as server-sent events.
@@ -69,7 +77,10 @@ def stream_agent(
         src.addEventListener("answer",     e => console.log(JSON.parse(e.data)));
     """
     def event_generator():
-        yield from stream_agent_claude(goal)
+        if provider == "demo":
+            yield from stream_agent_demo(goal)
+        else:
+            yield from stream_agent_claude(goal)
 
     return StreamingResponse(
         event_generator(),
@@ -79,6 +90,7 @@ def stream_agent(
             "X-Accel-Buffering": "no",   # disable Nginx buffering if behind a proxy
         },
     )
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
