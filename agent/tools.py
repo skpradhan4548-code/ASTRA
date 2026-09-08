@@ -24,12 +24,15 @@ import io
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pandas as pd
 import requests
 
+from agent.audit import AuditLogger, ToolResult
 from agent.sandbox import NetworkPolicy, default_sandbox
+from agent.security import SecurityScanner
 
 # ---------------------------------------------------------------------------
 # Sandbox workspace — agent file tools are restricted to this directory
@@ -214,13 +217,61 @@ READ_FILE_SPEC = {
 # Tool: write_file
 # ---------------------------------------------------------------------------
 def write_file(relative_path: str, content: str, session_id: str | None = None) -> str:
-    """Write text content to a file inside the sandboxed workspace."""
-    p = _safe_path(relative_path, session_id=session_id)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
-    return json.dumps(
-        {"written": str(p.relative_to(WORKSPACE)), "bytes": len(content)}, indent=2
-    )
+    """Write text content to a file inside the sandboxed workspace after security scanning."""
+    start_time = time.time()
+    valid, err_msg = SecurityScanner.scan_file_write(relative_path, content)
+    target_workspace = WORKSPACE
+    if session_id:
+        safe_session = "".join(c for c in session_id if c.isalnum() or c in ("-", "_")).strip()
+        if safe_session:
+            target_workspace = WORKSPACE / "sessions" / safe_session
+
+    if not valid:
+        res = ToolResult(
+            success=False,
+            error=f"Security scan rejected file write: {err_msg}",
+            exit_code=1,
+            runtime="security_scanner",
+        )
+        AuditLogger.log_execution("write_file", {"path": relative_path}, res, target_workspace, session_id)
+        return res.to_json()
+
+    try:
+        p = _safe_path(relative_path, session_id=session_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        sha256 = AuditLogger.calculate_sha256(p)
+        elapsed_ms = (time.time() - start_time) * 1000
+
+        artifact_info = {
+            "path": str(p.relative_to(WORKSPACE)),
+            "bytes": len(content),
+            "sha256": sha256,
+        }
+        res = ToolResult(
+            success=True,
+            stdout=f"Successfully written {len(content)} bytes to {relative_path}",
+            exit_code=0,
+            runtime="native_fs",
+            execution_time_ms=elapsed_ms,
+            artifacts=[artifact_info],
+        )
+        AuditLogger.log_execution("write_file", {"path": relative_path}, res, target_workspace, session_id)
+        # Return dict with backward-compatible 'written' and 'bytes' fields alongside schema
+        payload = res.to_dict()
+        payload["written"] = str(p.relative_to(WORKSPACE))
+        payload["bytes"] = len(content)
+        return json.dumps(payload, indent=2)
+    except Exception as exc:
+        res = ToolResult(
+            success=False,
+            error=str(exc),
+            exit_code=1,
+            runtime="native_fs",
+        )
+        AuditLogger.log_execution("write_file", {"path": relative_path}, res, target_workspace, session_id)
+        return res.to_json()
+
 
 
 WRITE_FILE_SPEC = {
