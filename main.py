@@ -42,12 +42,6 @@ app.add_middleware(
 # Mount the agent API routes at /agent/*
 app.include_router(agent_router)
 
-# Serve the static frontend — must come AFTER API routes so /agent/* wins
-FRONTEND = Path(__file__).parent / "frontend"
-if FRONTEND.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND), html=True), name="frontend")
-
-
 @app.get("/health")
 def health():
     return {
@@ -56,3 +50,10 @@ def health():
         "openai_key_set": bool(os.environ.get("OPENAI_API_KEY")),
         "chroma_collection": os.environ.get("CHROMA_COLLECTION", "docuagent"),
     }
+
+
+# Serve the static frontend — must come AFTER all API routes
+FRONTEND = Path(__file__).parent / "frontend"
+if FRONTEND.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND), html=True), name="frontend")
+
