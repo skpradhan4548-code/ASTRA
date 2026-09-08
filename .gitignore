@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Sensitive files & API keys
+.env
+*.key
+*.pem
+
+# Agent workspace ephemeral runs & vector stores
+agent_workspace/
+chroma_db/
+files.zip
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
