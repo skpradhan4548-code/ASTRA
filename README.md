@@ -1,115 +1,186 @@
-# DocuAgent — Agentic Tool-Use Layer
+# ASTRA (DocuAgent) — Autonomous Frontier Agent & Sandboxed Tool-Use Runtime
 
-An agentic loop on top of a RAG pipeline. Instead of only answering from
-retrieved document chunks, the agent can **search the web, run Python code,
-read/write files, analyze tabular data, and retrieve from ChromaDB** — choosing
-which tool to use at each step based on your goal.
+ASTRA is a modular, high-performance autonomous agent runtime built on top of an intelligent tool-dispatch loop and an isolated execution sandbox.
 
-## Project layout
+Instead of answering solely from static context, ASTRA reasons, plans, executes code in secure sandboxes, manipulates files across isolated sessions, analyzes tabular data, executes shell commands with security guards, retrieves semantic knowledge from vector stores, and searches the web — streaming every step live to an interactive glassmorphism UI.
+
+```mermaid
+flowchart TD
+    User([User Goal / Prompt]) --> API[FastAPI Gateway /agent]
+    API --> Loop[Agentic Turn Loop: Claude / OpenAI / Local vLLM]
+    Loop --> Plan[Reasoning & Tool Selection]
+    Plan --> Registry{Tools Registry}
+    
+    Registry -->|Code Execution| Sandbox[Isolated Sandbox: Docker / Process Watchdog]
+    Registry -->|Shell Ops| Shell[Sandboxed Shell: Guarded CLI & Venv Manager]
+    Registry -->|File I/O| FS[Safe Path & Session Workspaces]
+    Registry -->|Analytics| DF[Dataframe Analyzer: Pandas]
+    Registry -->|Retrieval| RAG[Vector Store: ChromaDB]
+    Registry -->|Web Info| Web[DuckDuckGo / Tavily Web Search]
+    
+    Sandbox --> Stream[SSE / WebSocket Live Event Bus]
+    Shell --> Stream
+    FS --> Stream
+    Stream --> UI[Interactive Live Frontend Dashboard]
+```
+
+---
+
+## What Has Been Built So Far (Phase 1: Sandboxing & Execution Security)
+
+- **Dual-Backend Execution Sandbox (`agent/sandbox.py`)**:
+  - `DockerSandbox`: Ephemeral containers with `--memory=512m`, `--cpus=1.0`, and network isolation flags.
+  - `ProcessSandbox`: Hardened local execution engine with environment variable sanitization (preventing secret leakage).
+  - `SandboxManager`: Auto-detects Docker daemon health and gracefully falls back to `ProcessSandbox` with metadata tagging.
+- **Process Watchdog & Child Tree Termination**:
+  - Cross-platform process tree killer (`ProcessWatchdog.kill_process_tree`) terminating stubborn background processes on timeouts (using `taskkill /F /T` on Windows and `SIGKILL` on Linux).
+- **Workspace Virtual Environment Manager (`VenvManager`)**:
+  - Provisions and manages isolated `.venv` directories inside workspaces.
+  - `install_package` tool installs required pip dependencies without polluting host Python packages.
+- **Sandboxed Shell Tool (`run_shell`)**:
+  - Runs terminal commands strictly inside the workspace.
+  - Intercepts and blocks dangerous system destruction patterns (`rm -rf /`, `format`, `del /f /s /q c:\`, fork bombs, system shutdown).
+- **Strict Safe Path Resolution & Session Isolation**:
+  - Blocks path traversal (`../`) and null-byte injection attacks.
+  - Automatically isolates runs into `agent_workspace/sessions/{session_id}/`.
+- **100% Automated Test Coverage**:
+  - 14 automated unit and security tests in `tests/` passing cleanly.
+
+---
+
+## Project Layout
 
 ```
 ASTRA/
 ├── agent/
 │   ├── __init__.py
-│   ├── core.py          ← agentic turn loop (Claude + OpenAI transports, SSE streaming)
-│   └── tools.py         ← all tool implementations + JSON-schema specs
-├── agent_router.py      ← FastAPI router: /agent/run, /agent/stream, /agent/workspace
-├── main.py              ← FastAPI entry point  →  uvicorn main:app --reload
+│   ├── core.py              # Agentic turn loop (Claude/OpenAI transports, SSE streaming)
+│   ├── sandbox.py           # Docker & Process sandboxes, Watchdog, VenvManager
+│   └── tools.py             # Tools registry (shell, python, files, dataframe, RAG, search)
+├── tests/
+│   ├── test_phase1_sandbox.py     # Sandbox security & path boundary tests
+│   └── test_phase1_steps4_6.py    # Watchdog, run_shell, and venv isolation tests
+├── agent_workspace/         # Sandboxed workspace for agent file I/O and execution
 ├── frontend/
-│   └── index.html       ← glassmorphism UI with live transcript panel
-├── agent_workspace/     ← sandboxed directory where agent writes/reads files
-├── requirements.txt
-└── .env                 ← your API keys (not committed to git)
+│   └── index.html           # Glassmorphism UI with live transcript & file viewer
+├── agent_router.py          # FastAPI routes (/agent/run, /agent/stream, /agent/workspace)
+├── main.py                  # Server entry point
+├── requirements.txt         # Project dependencies
+├── .gitignore               # Protects .env, caches, and sandbox runs
+└── .env                     # API keys (never committed to git)
 ```
 
-## How this maps to Astra's headline features
+---
 
-| Astra capability | This layer's version | Location |
-|---|---|---|
-| Computer use / browsing | `web_search` tool | `agent/tools.py` |
-| Software engineering | `run_python` tool | `agent/tools.py` |
-| Office/doc automation | `read_file` / `write_file` tools | `agent/tools.py` |
-| Scientific/data analysis | `analyze_dataframe` tool | `agent/tools.py` |
-| Document retrieval (RAG) | `search_documents` tool | `agent/tools.py` |
-| Long-running multi-step agent | The turn loop itself | `agent/core.py` |
-| Live tool-call visibility | SSE streaming endpoint | `agent_router.py` |
+## Quickstart Guide
 
-## Setup
+### 1. Prerequisites
+- Python 3.11, 3.12, or 3.13
+- Git
+- Optional: Docker Desktop (for containerized code execution)
 
+### 2. Install Dependencies
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
+pip install pytest
+```
 
-# 2. Add your API key
-#    Edit .env and replace sk-ant-... with your real Anthropic key
-#    (OpenAI key is optional — only needed with provider="openai")
+### 3. Configure API Keys
+Edit `.env` and configure your API keys:
+```env
+ANTHROPIC_API_KEY=your_anthropic_key_here
+OPENAI_API_KEY=your_openai_key_here
+CHROMA_COLLECTION=docuagent
+```
 
-# 3. Run
+### 4. Run Automated Tests
+```bash
+# Run all unit, security, and watchdog tests
+python -m pytest tests/ -v
+```
+
+### 5. Launch the Server with Live Reload
+```bash
 uvicorn main:app --reload --port 8000
 ```
+Open **http://localhost:8000** in your browser to interact with the live demo UI.
 
-Open **http://localhost:8000** — you'll see the interactive demo UI.
+---
 
-## Try it via curl
+## API & Endpoints
 
-**Blocking endpoint** (waits for the full answer):
+### 1. Blocking Execution (`POST /agent/run`)
+Executes the goal to completion and returns the final answer with full transcript:
 ```bash
 curl -X POST http://localhost:8000/agent/run \
   -H "Content-Type: application/json" \
-  -d '{"goal": "Calculate sqrt(144) with Python, then write the result to result.txt"}'
+  -d '{"goal": "Calculate 2**32 in python and save to power.txt"}'
 ```
 
-**Streaming endpoint** (server-sent events):
+### 2. Real-Time Streaming (`GET /agent/stream`)
+Streams Server-Sent Events (SSE) live as the agent executes tool calls:
 ```bash
-curl -N "http://localhost:8000/agent/stream?goal=Search+for+latest+AI+news"
+curl -N "http://localhost:8000/agent/stream?goal=Check+workspace+files+and+summarize"
 ```
 
-**Workspace contents**:
+### 3. Inspect Workspace (`GET /agent/workspace`)
+Lists all files currently written inside the sandboxed workspace:
 ```bash
-curl http://localhost:8000/workspace
+curl http://localhost:8000/agent/workspace
 ```
 
-**Health check**:
+### 4. Health Check (`GET /health`)
+Verifies provider keys and system status:
 ```bash
 curl http://localhost:8000/health
 ```
 
-## Enabling ChromaDB document search
+---
 
-The `search_documents` tool is included but no-ops gracefully until you wire
-up a ChromaDB collection:
+## How to Create the GitHub Repo & Push
 
-```bash
-# 1. Uncomment chromadb in requirements.txt, then:
-pip install chromadb
+### Step 1: Create an Empty Repository on GitHub
+1. Go to [github.com/new](https://github.com/new).
+2. Set the **Repository name** (e.g., `ASTRA` or `astra-agent`).
+3. Set visibility to **Public** or **Private**.
+4. **Do NOT** check "Add a README file" or "Add .gitignore" (we already have them initialized and committed).
+5. Click **Create repository**.
 
-# 2. Add to .env:
-CHROMA_COLLECTION=docuagent
+### Step 2: Link Remote & Push
+From your project directory (`ASTRA`), run:
+```powershell
+# Link to your remote repo
+git remote add origin https://github.com/SarojPradhan-code/<YOUR-REPO-NAME>.git
 
-# 3. Ingest your documents (example using chromadb directly):
-python -c "
-import chromadb, os
-client = chromadb.PersistentClient(path='./chroma_db')
-col = client.get_or_create_collection('docuagent')
-col.add(documents=['Your document text here'], ids=['doc1'])
-print('Ingested.')
-"
+# Verify remote URL
+git remote -v
+
+# Push the main branch
+git push -u origin main
 ```
 
-The agent will now call `search_documents` before `web_search` whenever
-it thinks the answer might be in your document store.
+---
 
-## Next steps (in order of payoff)
+## The 8-Phase Roadmap to Frontier "1000X" Capabilities
 
-1. **Streaming UI polish** — The SSE stream is live; wire reconnect logic
-   and an abort button to the frontend for a more robust UX.
-2. **Real search API** — Swap the DuckDuckGo HTML scrape in `web_search`
-   for [Tavily](https://tavily.com) or [Serper](https://serper.dev) for
-   reliable, production-grade results.
-3. **Sandbox `run_python`** — For any public deployment, run the subprocess
-   inside a locked-down container (gVisor, Firecracker) rather than bare
-   subprocess.
-4. **Ingest a document corpus** — Point ChromaDB at your real PDFs/docs and
-   the agent can reason across both your knowledge base and the live web.
-5. **Autonomous browser control** — A separate project: Playwright + screenshot
-   loop + vision model. Worth building after this pattern is solid.
+| Phase | Milestone | Status |
+|---|---|---|
+| **Phase 1** | **Sandbox & Execution Security** (Docker/Process, Watchdog, Venv, Guarded Shell) | **Completed** |
+| **Phase 2** | **Async Engine & Event Bus** (Parallel Tool Calling, Bidirectional WebSockets, Session Store) | In Progress |
+| **Phase 3** | **Synthetic Data Curation** (ReAct trajectories, error injection, ToolBench formatting) | Planned |
+| **Phase 4** | **Model SFT & RLVR Fine-Tuning** (QLoRA, Axolotl/Unsloth, GRPO verifier, vLLM serving) | Planned |
+| **Phase 5** | **Computer Use & Browser Automation** (Playwright, accessibility tree, visual grounding) | Planned |
+| **Phase 6** | **Autonomous Software Engineering** (AST analysis, git automation, self-healing test loops) | Planned |
+| **Phase 7** | **Document, Spreadsheet & Graph RAG** (Multi-sheet Excel, Hybrid BM25/Vector, NetworkX) | Planned |
+| **Phase 8** | **Multi-Agent Swarms & Production Ops** (Planner/Coder/Critic swarms, OpenTelemetry, Docker Compose) | Planned |
+
+---
+
+## What This Repo Needs Next to Watch & Scale
+
+1. **Watch Mode for Development**:
+   - Run `uvicorn main:app --reload` for automatic backend hot-reloading on file edits.
+   - Run `pytest-watch` (`ptw`) to continuously run the test suite upon code changes.
+2. **Phase 2 Implementation**:
+   - Refactoring `agent/core.py` to `asyncio` for parallel tool calls (e.g. running 3 web searches or test runners simultaneously).
+   - Upgrading from one-way SSE to bidirectional WebSockets for real-time human-in-the-loop approvals.
