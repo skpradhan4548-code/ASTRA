@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DocuAgent — Agentic AI</title>
+  <meta name="description" content="DocuAgent agentic AI assistant: searches the web, runs code, reads and writes files, and retrieves from your document store — all in one turn loop." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & tokens ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0a0d14;
+      --surface:    #111520;
+      --glass:      rgba(255,255,255,0.04);
+      --glass-border: rgba(255,255,255,0.09);
+      --accent:     #6c63ff;
+      --accent2:    #a78bfa;
+      --green:      #34d399;
+      --amber:      #fbbf24;
+      --red:        #f87171;
+      --blue:       #60a5fa;
+      --text:       #e2e8f0;
+      --muted:      #64748b;
+      --radius:     14px;
+      --radius-sm:  8px;
+      --shadow:     0 8px 32px rgba(0,0,0,0.6);
+      --font:       'Inter', system-ui, sans-serif;
+      --mono:       'JetBrains Mono', monospace;
+      --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Background mesh gradient ───────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 10%,  rgba(108,99,255,.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 80%,  rgba(167,139,250,.12) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 40% at 60% 30%,  rgba(96,165,250,.08)  0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────── */
+    #app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 20px 40px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      padding: 36px 0 28px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+      box-shadow: 0 0 24px rgba(108,99,255,.4);
+    }
+
+    .header-text h1 {
+      font-size: 1.45rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #fff 0%, var(--accent2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.2;
+    }
+
+    .header-text p {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .pill {
+      margin-left: auto;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 99px;
+      padding: 5px 14px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .pill-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: .5; transform: scale(0.8); }
+    }
+
+    /* ── Main grid ──────────────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    @media (max-width: 700px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    /* ── Glass card ─────────────────────────────────────────────────── */
+    .card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--glass-border);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .card-icon {
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+
+    .card-header h2 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── Goal input panel ───────────────────────────────────────────── */
+    .goal-panel { grid-column: 1 / -1; }
+
+    #goal-form { padding: 20px; }
+
+    .input-wrapper {
+      position: relative;
+      margin-bottom: 14px;
+    }
+
+    textarea#goal-input {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.95rem;
+      padding: 14px 16px;
+      resize: vertical;
+      min-height: 80px;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      outline: none;
+    }
+
+    textarea#goal-input::placeholder { color: var(--muted); }
+
+    textarea#goal-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(108,99,255,.2);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    select#provider-select {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.85rem;
+      padding: 9px 12px;
+      cursor: pointer;
+      outline: none;
+    }
+
+    button#run-btn {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-family: var(--font);
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 10px 26px;
+      cursor: pointer;
+      transition: opacity var(--transition), transform var(--transition), box-shadow var(--transition);
+      box-shadow: 0 4px 16px rgba(108,99,255,.4);
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    button#run-btn:hover   { opacity: .9; transform: translateY(-1px); box-shadow: 0 6px 24px rgba(108,99,255,.5); }
+    button#run-btn:active  { transform: translateY(0); }
+    button#run-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .example-pills {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      padding: 0 20px 18px;
+    }
+
+    .example-pill {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--glass-border);
+      border-radius: 99px;
+      padding: 4px 12px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+
+    .example-pill:hover {
+      border-color: var(--accent);
+      color: var(--accent2);
+      background: rgba(108,99,255,.08);
+    }
+
+    /* ── Transcript panel ───────────────────────────────────────────── */
+    #transcript-list {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 120px;
+      max-height: 480px;
+      overflow-y: auto;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-align: center;
+      gap: 8px;
+      padding: 24px 16px;
+      min-height: 120px;
+    }
+
+    .empty-state .empty-icon { font-size: 2rem; opacity: .4; }
+
+    /* Tool call card */
+    .tool-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      animation: fadeSlideIn 0.3s ease forwards;
+    }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .tool-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tool-badge {
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      letter-spacing: 0.03em;
+    }
+
+    .tool-badge.web_search        { background: rgba(96,165,250,.15);  color: var(--blue);   border: 1px solid rgba(96,165,250,.3); }
+    .tool-badge.run_python         { background: rgba(52,211,153,.15);  color: var(--green);  border: 1px solid rgba(52,211,153,.3); }
+    .tool-badge.read_file          { background: rgba(251,191,36,.15);  color: var(--amber);  border: 1px solid rgba(251,191,36,.3); }
+    .tool-badge.write_file         { background: rgba(251,191,36,.15);  color: var(--amber);  border: 1px solid rgba(251,191,36,.3); }
+    .tool-badge.analyze_dataframe  { background: rgba(167,139,250,.15); color: var(--accent2);border: 1px solid rgba(167,139,250,.3); }
+    .tool-badge.list_workspace_files{ background: rgba(251,191,36,.12); color: var(--amber);  border: 1px solid rgba(251,191,36,.25); }
+    .tool-badge.search_documents   { background: rgba(108,99,255,.15);  color: var(--accent); border: 1px solid rgba(108,99,255,.3); }
+
+    .tool-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tool-status {
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+
+    .tool-status.running { background: rgba(251,191,36,.15); color: var(--amber); animation: fadeSlideIn 0.2s ease; }
+    .tool-status.done    { background: rgba(52,211,153,.15);  color: var(--green); }
+    .tool-status.error   { background: rgba(248,113,113,.15); color: var(--red); }
+
+    .chevron { transition: transform var(--transition); font-size: 0.7rem; color: var(--muted); }
+    .tool-card.open .chevron { transform: rotate(180deg); }
+
+    .tool-card-body {
+      display: none;
+      padding: 0 14px 14px;
+      gap: 10px;
+      flex-direction: column;
+    }
+
+    .tool-card.open .tool-card-body { display: flex; }
+
+    .tool-section-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    pre.tool-code {
+      background: rgba(0,0,0,.35);
+      border: 1px solid var(--glass-border);
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: #c4b5fd;
+      padding: 10px 12px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.5;
+    }
+
+    /* ── Answer panel ───────────────────────────────────────────────── */
+    #answer-content {
+      padding: 20px;
+      min-height: 100px;
+      font-size: 0.92rem;
+      line-height: 1.75;
+      color: var(--text);
+    }
+
+    #answer-content .answer-placeholder {
+      color: var(--muted);
+      font-style: italic;
+      font-size: 0.85rem;
+    }
+
+    #answer-content p   { margin-bottom: 10px; }
+    #answer-content code { font-family: var(--mono); background: rgba(255,255,255,.06); border-radius: 4px; padding: 1px 5px; font-size: 0.85em; }
+    #answer-content pre  { background: rgba(0,0,0,.4); border-radius: 8px; padding: 12px; overflow-x: auto; font-family: var(--mono); font-size: 0.78rem; line-height: 1.5; margin-bottom: 10px; }
+
+    .turn-counter {
+      margin-left: auto;
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      padding: 4px 10px;
+      background: rgba(255,255,255,.04);
+      border-radius: 99px;
+    }
+
+    /* ── Workspace panel ────────────────────────────────────────────── */
+    #workspace-list {
+      padding: 14px 18px;
+      min-height: 60px;
+    }
+
+    .ws-file {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--glass-border);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--text);
+      animation: fadeSlideIn 0.25s ease;
+    }
+
+    .ws-file:last-child { border-bottom: none; }
+    .ws-file .ws-size { margin-left: auto; color: var(--muted); }
+    .ws-empty { color: var(--muted); font-size: 0.82rem; font-style: italic; }
+
+    /* ── Scrollbar ──────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- ── Header ──────────────────────────────────────────────────── -->
+  <header>
+    <div class="logo">🤖</div>
+    <div class="header-text">
+      <h1>DocuAgent</h1>
+      <p>Agentic tool-use layer — search · code · files · RAG</p>
+    </div>
+    <div class="pill" id="status-pill">
+      <span class="pill-dot"></span>
+      <span id="status-text">Ready</span>
+    </div>
+  </header>
+
+  <!-- ── Main ────────────────────────────────────────────────────── -->
+  <main>
+
+    <!-- Goal input (full width) -->
+    <section class="card goal-panel">
+      <div class="card-header">
+        <div class="card-icon" style="background:rgba(108,99,255,.15);">🎯</div>
+        <h2>Agent Goal</h2>
+      </div>
+      <form id="goal-form">
+        <div class="input-wrapper">
+          <textarea
+            id="goal-input"
+            placeholder="Describe what you want the agent to do…  e.g. 'Search for the current USD/INR rate, then write a summary to rate.txt'"
+            rows="3"
+          ></textarea>
+        </div>
+        <div class="form-row">
+          <select id="provider-select">
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="openai">OpenAI</option>
+          </select>
+          <button type="submit" id="run-btn">
+            <span class="spinner" id="spinner"></span>
+            <span id="btn-label">▶ Run Agent</span>
+          </button>
+        </div>
+      </form>
+      <div class="example-pills" id="examples">
+        <!-- Filled by JS -->
+      </div>
+    </section>
+
+    <!-- Transcript -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-icon" style="background:rgba(52,211,153,.12);">🔍</div>
+        <h2>Live Tool Calls</h2>
+      </div>
+      <div id="transcript-list">
+        <div class="empty-state" id="transcript-empty">
+          <span class="empty-icon">⚙️</span>
+          <span>Tool calls will appear here<br>as the agent works…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Answer -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-icon" style="background:rgba(167,139,250,.12);">💬</div>
+        <h2>Final Answer</h2>
+        <span class="turn-counter" id="turn-counter" style="display:none"></span>
+      </div>
+      <div id="answer-content">
+        <p class="answer-placeholder">The agent's final answer will appear here.</p>
+      </div>
+    </section>
+
+    <!-- Workspace -->
+    <section class="card" style="grid-column: 1 / -1;">
+      <div class="card-header">
+        <div class="card-icon" style="background:rgba(251,191,36,.1);">📁</div>
+        <h2>Workspace Files</h2>
+        <button id="refresh-ws-btn" style="margin-left:auto;background:none;border:1px solid var(--glass-border);color:var(--muted);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.75rem;">↻ Refresh</button>
+      </div>
+      <div id="workspace-list">
+        <p class="ws-empty">No files yet — ask the agent to write something.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+/* ── Example goals ──────────────────────────────────────────────────────── */
+const EXAMPLES = [
+  "Search for the current USD to INR exchange rate and write a summary to rate.txt",
+  "Calculate the first 15 Fibonacci numbers using Python",
+  "List all files in the workspace, then read and summarise any text files found",
+  "Search for the latest news about large language models and write a brief report to llm_news.txt",
+  "Write a Python script that generates a multiplication table for 1–12 and run it",
+];
+
+const pillContainer = document.getElementById("examples");
+EXAMPLES.forEach(ex => {
+  const btn = document.createElement("button");
+  btn.className = "example-pill";
+  btn.type = "button";
+  btn.textContent = ex.length > 60 ? ex.slice(0, 57) + "…" : ex;
+  btn.title = ex;
+  btn.addEventListener("click", () => {
+    document.getElementById("goal-input").value = ex;
+  });
+  pillContainer.appendChild(btn);
+});
+
+/* ── Tool icon map ──────────────────────────────────────────────────────── */
+const TOOL_ICONS = {
+  web_search:           "🌐",
+  run_python:           "🐍",
+  read_file:            "📖",
+  write_file:           "✏️",
+  analyze_dataframe:    "📊",
+  list_workspace_files: "📂",
+  search_documents:     "🗂️",
+};
+
+/* ── Helpers ────────────────────────────────────────────────────────────── */
+function setStatus(text, color) {
+  const pill = document.getElementById("status-pill");
+  const dot  = pill.querySelector(".pill-dot");
+  document.getElementById("status-text").textContent = text;
+  dot.style.background = color || "var(--green)";
+}
+
+function setRunning(running) {
+  const btn     = document.getElementById("run-btn");
+  const spinner = document.getElementById("spinner");
+  const label   = document.getElementById("btn-label");
+  btn.disabled         = running;
+  spinner.style.display = running ? "block" : "none";
+  label.textContent    = running ? "Running…" : "▶ Run Agent";
+}
+
+/* ── Transcript rendering ───────────────────────────────────────────────── */
+let toolCards = {};   // tool_use_id → card DOM element
+
+function clearTranscript() {
+  toolCards = {};
+  const list = document.getElementById("transcript-list");
+  list.innerHTML = "";
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+  empty.id = "transcript-empty";
+  empty.innerHTML = `<span class="empty-icon">⚙️</span><span>Tool calls will appear here<br>as the agent works…</span>`;
+  list.appendChild(empty);
+}
+
+function hideEmpty() {
+  const el = document.getElementById("transcript-empty");
+  if (el) el.remove();
+}
+
+function addToolStart(toolName, input) {
+  hideEmpty();
+  const list = document.getElementById("transcript-list");
+
+  const card = document.createElement("div");
+  card.className = "tool-card";
+
+  // Summarise input for the label
+  const inputStr = JSON.stringify(input);
+  const preview  = inputStr.length > 80 ? inputStr.slice(0, 77) + "…" : inputStr;
+
+  card.innerHTML = `
+    <div class="tool-card-header" onclick="this.parentElement.classList.toggle('open')">
+      <span class="tool-badge ${toolName}">${TOOL_ICONS[toolName] || "🔧"} ${toolName}</span>
+      <span class="tool-label">${escHtml(preview)}</span>
+      <span class="tool-status running">running</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="tool-card-body">
+      <div>
+        <div class="tool-section-label">Input</div>
+        <pre class="tool-code">${escHtml(JSON.stringify(input, null, 2))}</pre>
+      </div>
+      <div class="result-section" style="display:none">
+        <div class="tool-section-label">Result preview</div>
+        <pre class="tool-code result-pre"></pre>
+      </div>
+    </div>`;
+
+  list.appendChild(card);
+  list.scrollTop = list.scrollHeight;
+
+  // Store by tool name (keyed by position since we don't have IDs in SSE)
+  const key = `${toolName}_${Date.now()}`;
+  toolCards[key] = card;
+  card.dataset.key = key;
+  return card;
+}
+
+function updateToolResult(toolName, resultPreview) {
+  // Find the last card for this tool name that is still "running"
+  const cards = document.querySelectorAll(".tool-card");
+  let target = null;
+  for (let i = cards.length - 1; i >= 0; i--) {
+    const badge = cards[i].querySelector(`.tool-badge.${toolName}`);
+    const status = cards[i].querySelector(".tool-status.running");
+    if (badge && status) { target = cards[i]; break; }
+  }
+  if (!target) return;
+
+  const status = target.querySelector(".tool-status");
+  status.className = "tool-status done";
+  status.textContent = "done";
+
+  const resSection = target.querySelector(".result-section");
+  const resPre     = target.querySelector(".result-pre");
+  resSection.style.display = "block";
+  resPre.textContent = resultPreview;
+}
+
+function showAnswer(text, turns) {
+  const el = document.getElementById("answer-content");
+  el.innerHTML = markdownToHtml(text);
+
+  const counter = document.getElementById("turn-counter");
+  counter.style.display = "inline";
+  counter.textContent   = `${turns} turn${turns !== 1 ? "s" : ""}`;
+}
+
+/* ── Minimal Markdown renderer ──────────────────────────────────────────── */
+function markdownToHtml(md) {
+  let html = escHtml(md)
+    .replace(/^### (.+)$/gm, '<h3 style="font-size:1rem;margin:12px 0 6px;color:var(--accent2)">$1</h3>')
+    .replace(/^## (.+)$/gm,  '<h2 style="font-size:1.1rem;margin:14px 0 8px">$1</h2>')
+    .replace(/^# (.+)$/gm,   '<h1 style="font-size:1.2rem;margin:16px 0 8px">$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,     '<em>$1</em>')
+    .replace(/`([^`]+)`/g,     '<code>$1</code>')
+    .replace(/^- (.+)$/gm,     '<li style="margin-left:18px">$1</li>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  return `<p>${html}</p>`;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/* ── Workspace loader ───────────────────────────────────────────────────── */
+async function loadWorkspace() {
+  try {
+    const res  = await fetch("/agent/workspace");
+    const data = await res.json();
+    const list = document.getElementById("workspace-list");
+    if (!data.files || data.files.length === 0) {
+      list.innerHTML = `<p class="ws-empty">No files yet — ask the agent to write something.</p>`;
+      return;
+    }
+    list.innerHTML = data.files
+      .map(f => `
+        <div class="ws-file">
+          <span>📄</span>
+          <span>${escHtml(f.path)}</span>
+          <span class="ws-size">${formatBytes(f.size_bytes)}</span>
+        </div>`)
+      .join("");
+  } catch (e) {
+    console.warn("Workspace fetch failed:", e);
+  }
+}
+
+function formatBytes(b) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+document.getElementById("refresh-ws-btn").addEventListener("click", loadWorkspace);
+loadWorkspace();
+
+/* ── Stream runner ──────────────────────────────────────────────────────── */
+async function runAgentStream(goal, provider) {
+  const url = `/agent/stream?goal=${encodeURIComponent(goal)}&provider=${provider}`;
+  const evtSource = new EventSource(url);
+  let lastToolName = null;
+
+  evtSource.addEventListener("tool_start", e => {
+    const d = JSON.parse(e.data);
+    lastToolName = d.tool;
+    addToolStart(d.tool, d.input);
+  });
+
+  evtSource.addEventListener("tool_result", e => {
+    const d = JSON.parse(e.data);
+    updateToolResult(d.tool, d.result_preview);
+  });
+
+  evtSource.addEventListener("answer", e => {
+    const d = JSON.parse(e.data);
+    showAnswer(d.text, d.turns);
+    setStatus("Done", "var(--green)");
+    loadWorkspace();
+    setRunning(false);
+  });
+
+  evtSource.addEventListener("error", e => {
+    try {
+      const d = JSON.parse(e.data);
+      showAnswer(`⚠️ Error: ${d.message}`, 0);
+    } catch {}
+    setStatus("Error", "var(--red)");
+    setRunning(false);
+    evtSource.close();
+  });
+
+  evtSource.addEventListener("done", () => {
+    evtSource.close();
+    setRunning(false);
+  });
+
+  evtSource.onerror = () => {
+    evtSource.close();
+    setStatus("Connection error", "var(--red)");
+    setRunning(false);
+  };
+}
+
+/* ── Form submit ────────────────────────────────────────────────────────── */
+document.getElementById("goal-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const goal     = document.getElementById("goal-input").value.trim();
+  const provider = document.getElementById("provider-select").value;
+  if (!goal) return;
+
+  clearTranscript();
+  document.getElementById("answer-content").innerHTML =
+    `<p class="answer-placeholder">Agent is working…</p>`;
+  document.getElementById("turn-counter").style.display = "none";
+
+  setRunning(true);
+  setStatus("Running…", "var(--amber)");
+
+  await runAgentStream(goal, provider);
+});
+</script>
+</body>
+</html>
